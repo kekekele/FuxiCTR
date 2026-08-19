@@ -36,8 +36,16 @@ def main():
             group_train = group_df.drop(group_test.index)
             test_parts.append(group_test)
             train_parts.append(group_train)
-        train_df = pd.concat(train_parts).sample(frac=1.0, random_state=args.seed).reset_index(drop=True)
-        test_df = pd.concat(test_parts).sample(frac=1.0, random_state=args.seed).reset_index(drop=True)
+        train_df = (
+            pd.concat(train_parts)
+            .sample(frac=1.0, random_state=args.seed)
+            .reset_index(drop=True)
+        )
+        test_df = (
+            pd.concat(test_parts)
+            .sample(frac=1.0, random_state=args.seed)
+            .reset_index(drop=True)
+        )
     else:
         test_df = df.sample(frac=args.test_ratio, random_state=args.seed)
         train_df = df.drop(test_df.index).reset_index(drop=True)
