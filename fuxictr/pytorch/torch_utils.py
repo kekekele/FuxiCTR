@@ -25,14 +25,19 @@ import random
 from functools import partial
 import re
 
-try:
-    import torch_npu  # noqa: F401
-except ImportError:
-    torch_npu = None
+
+def _ensure_npu_runtime():
+    if hasattr(torch, "npu"):
+        return True
+    try:
+        import torch_npu  # noqa: F401
+    except ImportError:
+        return False
+    return hasattr(torch, "npu")
 
 
 def has_npu():
-    return hasattr(torch, "npu") and torch.npu.is_available()
+    return _ensure_npu_runtime() and torch.npu.is_available()
 
 
 def set_device(device):
