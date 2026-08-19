@@ -26,18 +26,8 @@ from functools import partial
 import re
 
 
-def _ensure_npu_runtime():
-    if hasattr(torch, "npu"):
-        return True
-    try:
-        import torch_npu  # noqa: F401
-    except ImportError:
-        return False
-    return hasattr(torch, "npu")
-
-
 def has_npu():
-    return _ensure_npu_runtime() and torch.npu.is_available()
+    return hasattr(torch, "npu") and torch.npu.is_available()
 
 
 def set_device(device):
@@ -88,7 +78,11 @@ def get_device(gpu=-1):
         if device_name in ["", "cpu", "-1"]:
             return torch.device("cpu")
         if device_name == "npu":
-            device_name = "npu:0"
+            local_rank = int(os.environ.get("LOCAL_RANK", 0))
+            device_name = "npu:{}".format(local_rank)
+        if device_name == "cuda":
+            local_rank = int(os.environ.get("LOCAL_RANK", 0))
+            device_name = "cuda:{}".format(local_rank)
         if device_name.startswith("cuda"):
             if not torch.cuda.is_available():
                 raise RuntimeError(

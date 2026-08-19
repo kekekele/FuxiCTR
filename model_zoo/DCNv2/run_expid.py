@@ -47,7 +47,7 @@ if __name__ == "__main__":
         "--device",
         type=str,
         default="cpu",
-        help="The device to use, e.g. cpu, cuda:0, or npu:0",
+        help="The device to use, e.g. cpu, cuda, cuda:0, npu, or npu:0",
     )
     args = vars(parser.parse_args())
     device = get_device(args["device"])
