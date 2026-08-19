@@ -15,12 +15,7 @@ nps_wide_csv:
     test_data: ../../data/nps_wide/test.csv
     min_categr_count: 1
     feature_cols:
-        - {name: user_id, active: True, dtype: str, type: categorical}
-        - {name: rating_t0, active: True, dtype: float, type: numeric}
-        - {name: rating_t1, active: True, dtype: float, type: numeric}
-        - {name: rating_t2, active: True, dtype: float, type: numeric}
-        - {name: rating_t3, active: True, dtype: float, type: numeric}
-        - {name: rating_t4, active: True, dtype: float, type: numeric}
-        - {name: rating_t5, active: True, dtype: float, type: numeric}
-        - {name: REPLACE_WITH_SCHEMA_FEATURES, active: True, dtype: float, type: numeric}
+        [{name: ["user_id"], active: True, dtype: str, type: categorical},
+         {name: ["rating_t0","rating_t1","rating_t2","rating_t3","rating_t4","rating_t5",
+                 "REPLACE_WITH_SCHEMA_FEATURES"], active: True, dtype: float, type: numeric}]
     label_col: {name: label, dtype: float}

@@ -11,12 +11,31 @@ def group_feature_cols(feature_cols):
     return grouped_specs
 
 
-def format_grouped_feature_line(names, dtype, feature_type, is_last):
+def format_grouped_feature_spec(names, dtype, feature_type):
     joined_names = ",".join(['"{}"'.format(name) for name in names])
-    suffix = "}]" if is_last else "},"
-    return "        [{{name: [{}], active: True, dtype: {}, type: {}{}}}".format(
-        joined_names, dtype, feature_type, suffix
+    return "{{name: [{}], active: True, dtype: {}, type: {}}}".format(
+        joined_names, dtype, feature_type
     )
+
+
+def format_feature_lines(grouped_items):
+    if not grouped_items:
+        return ["        []"]
+
+    lines = []
+    for idx, ((dtype, feature_type), names) in enumerate(grouped_items):
+        spec_text = format_grouped_feature_spec(
+            names=names, dtype=dtype, feature_type=feature_type
+        )
+        if idx == 0 and idx == len(grouped_items) - 1:
+            lines.append("        [{}]".format(spec_text))
+        elif idx == 0:
+            lines.append("        [{},".format(spec_text))
+        elif idx == len(grouped_items) - 1:
+            lines.append("         {}]".format(spec_text))
+        else:
+            lines.append("         {},".format(spec_text))
+    return lines
 
 
 def main():
@@ -55,16 +74,7 @@ def main():
 
     grouped_specs = group_feature_cols(schema["feature_cols"])
     grouped_items = list(grouped_specs.items())
-    feature_lines = []
-    for idx, ((dtype, feature_type), names) in enumerate(grouped_items):
-        feature_lines.append(
-            format_grouped_feature_line(
-                names=names,
-                dtype=dtype,
-                feature_type=feature_type,
-                is_last=(idx == len(grouped_items) - 1),
-            )
-        )
+    feature_lines = format_feature_lines(grouped_items)
     label_spec = schema["label_col"]
 
     yaml_text = "\n".join(
