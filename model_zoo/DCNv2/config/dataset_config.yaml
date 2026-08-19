@@ -5,3 +5,22 @@ tiny_parquet:
     train_data: ../../data/tiny_parquet/train.parquet
     valid_data: ../../data/tiny_parquet/valid.parquet
     test_data: ../../data/tiny_parquet/test.parquet
+
+### Template for transformed NPS wide CSV
+nps_wide_csv:
+    data_root: ../../data/
+    data_format: csv
+    train_data: ../../data/nps_wide/train.csv
+    valid_data: ../../data/nps_wide/test.csv
+    test_data: ../../data/nps_wide/test.csv
+    min_categr_count: 1
+    feature_cols:
+        - {name: user_id, active: True, dtype: str, type: categorical}
+        - {name: rating_t0, active: True, dtype: float, type: numeric}
+        - {name: rating_t1, active: True, dtype: float, type: numeric}
+        - {name: rating_t2, active: True, dtype: float, type: numeric}
+        - {name: rating_t3, active: True, dtype: float, type: numeric}
+        - {name: rating_t4, active: True, dtype: float, type: numeric}
+        - {name: rating_t5, active: True, dtype: float, type: numeric}
+        - {name: REPLACE_WITH_SCHEMA_FEATURES, active: True, dtype: float, type: numeric}
+    label_col: {name: label, dtype: float}
