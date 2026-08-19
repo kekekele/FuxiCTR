@@ -1,7 +1,7 @@
 # =========================================================================
 # Copyright (C) 2024. The FuxiCTR Library. All rights reserved.
 # Copyright (C) 2022. Huawei Technologies Co., Ltd. All rights reserved.
-# 
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -25,6 +25,11 @@ import random
 from functools import partial
 import re
 
+try:
+    import torch_npu  # noqa: F401
+except ImportError:
+    torch_npu = None
+
 
 def seed_everything(seed=1029):
     """Set random seeds for reproducibility across Python, NumPy, and PyTorch.
@@ -36,24 +41,59 @@ def seed_everything(seed=1029):
     os.environ["PYTHONHASHSEED"] = str(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    if hasattr(torch, "npu") and torch.npu.is_available():
+        torch.npu.manual_seed(seed)
+        torch.npu.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
+
 
 def get_device(gpu=-1):
     """Get a PyTorch compute device.
 
     Args:
-        gpu (int): GPU device index. If negative or CUDA unavailable, returns CPU.
-            Default: ``-1``.
+        gpu (int or str): GPU index or explicit device string. Integer values
+            keep the existing CUDA semantics. Strings may be ``"cpu"``,
+            ``"cuda:0"``, ``"npu"``, or ``"npu:0"``.
 
     Returns:
         torch.device: The selected compute device.
     """
+    if isinstance(gpu, torch.device):
+        return gpu
+    if gpu is None:
+        return torch.device("cpu")
+    if isinstance(gpu, str):
+        device_name = gpu.strip().lower()
+        if device_name in ["", "cpu", "-1"]:
+            return torch.device("cpu")
+        if device_name == "npu":
+            device_name = "npu:0"
+        if device_name.startswith("cuda"):
+            if not torch.cuda.is_available():
+                raise RuntimeError(
+                    "CUDA device was requested but CUDA is not available."
+                )
+            return torch.device(device_name)
+        if device_name.startswith("npu"):
+            if not hasattr(torch, "npu") or not torch.npu.is_available():
+                raise RuntimeError(
+                    "Ascend NPU was requested but torch_npu is not installed or no NPU is available."
+                )
+            torch.npu.set_device(device_name)
+            return torch.device(device_name)
+        try:
+            gpu = int(device_name)
+        except ValueError:
+            raise ValueError("Unsupported device spec: {}".format(gpu))
     if gpu >= 0 and torch.cuda.is_available():
         device = torch.device("cuda:" + str(gpu))
     else:
         device = torch.device("cpu")
     return device
+
 
 def get_optimizer(optimizer, params, lr):
     """Get a PyTorch optimizer instance.
@@ -77,6 +117,7 @@ def get_optimizer(optimizer, params, lr):
     except:
         raise NotImplementedError("optimizer={} is not supported.".format(optimizer))
     return optimizer
+
 
 def get_loss(loss):
     """Get a PyTorch loss function.
@@ -103,6 +144,7 @@ def get_loss(loss):
             raise NotImplementedError("loss={} is not supported.".format(loss))
     return loss_fn
 
+
 def get_regularizer(reg):
     """Parse a regularization specification into (p_norm, weight) tuples.
 
@@ -117,7 +159,7 @@ def get_regularizer(reg):
     Raises:
         NotImplementedError: If the regularization format is not supported.
     """
-    reg_pair = [] # of tuples (p_norm, weight)
+    reg_pair = []  # of tuples (p_norm, weight)
     if isinstance(reg, float):
         reg_pair.append((2, reg))
     elif isinstance(reg, str):
@@ -133,6 +175,7 @@ def get_regularizer(reg):
         except:
             raise NotImplementedError("regularizer={} is not supported.".format(reg))
     return reg_pair
+
 
 def get_activation(activation, hidden_units=None):
     """Get a PyTorch activation module or function.
@@ -161,16 +204,21 @@ def get_activation(activation, hidden_units=None):
             return nn.PReLU(hidden_units, init=0.1)
         elif activation.lower() == "dice":
             from fuxictr.pytorch.layers.activations import Dice
+
             return Dice(hidden_units)
         else:
             return getattr(nn, activation)()
     elif isinstance(activation, list):
         if hidden_units is not None:
             assert len(activation) == len(hidden_units)
-            return [get_activation(act, units) for act, units in zip(activation, hidden_units)]
+            return [
+                get_activation(act, units)
+                for act, units in zip(activation, hidden_units)
+            ]
         else:
             return [get_activation(act) for act in activation]
     return activation
+
 
 def get_initializer(initializer):
     """Get a PyTorch weight initializer.
@@ -189,6 +237,5 @@ def get_initializer(initializer):
         try:
             initializer = eval(initializer)
         except:
-            raise ValueError("initializer={} is not supported."\
-                             .format(initializer))
+            raise ValueError("initializer={} is not supported.".format(initializer))
     return initializer
