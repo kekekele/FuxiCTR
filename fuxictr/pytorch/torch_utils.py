@@ -31,6 +31,19 @@ except ImportError:
     torch_npu = None
 
 
+def has_npu():
+    return hasattr(torch, "npu") and torch.npu.is_available()
+
+
+def set_device(device):
+    if not isinstance(device, torch.device):
+        device = torch.device(device)
+    if device.type == "npu":
+        torch.npu.set_device(device)
+    elif device.type == "cuda":
+        torch.cuda.set_device(device)
+
+
 def seed_everything(seed=1029):
     """Set random seeds for reproducibility across Python, NumPy, and PyTorch.
 
@@ -44,7 +57,7 @@ def seed_everything(seed=1029):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
-    if hasattr(torch, "npu") and torch.npu.is_available():
+    if has_npu():
         torch.npu.manual_seed(seed)
         torch.npu.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
@@ -78,11 +91,10 @@ def get_device(gpu=-1):
                 )
             return torch.device(device_name)
         if device_name.startswith("npu"):
-            if not hasattr(torch, "npu") or not torch.npu.is_available():
+            if not has_npu():
                 raise RuntimeError(
                     "Ascend NPU was requested but torch_npu is not installed or no NPU is available."
                 )
-            torch.npu.set_device(device_name)
             return torch.device(device_name)
         try:
             gpu = int(device_name)

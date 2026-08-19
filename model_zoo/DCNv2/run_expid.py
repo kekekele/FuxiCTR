@@ -26,7 +26,7 @@ from datetime import datetime
 from fuxictr.utils import load_config, set_logger, print_to_json, print_to_list
 from fuxictr.features import FeatureMap
 from fuxictr.pytorch.dataloaders import RankDataLoader
-from fuxictr.pytorch.torch_utils import seed_everything
+from fuxictr.pytorch.torch_utils import get_device, seed_everything, set_device
 from fuxictr.preprocess import FeatureProcessor, build_dataset
 import src
 import gc
@@ -50,10 +50,12 @@ if __name__ == "__main__":
         help="The device to use, e.g. cpu, cuda:0, or npu:0",
     )
     args = vars(parser.parse_args())
+    device = get_device(args["device"])
+    set_device(device)
 
     experiment_id = args["expid"]
     params = load_config(args["config"], experiment_id)
-    params["gpu"] = args["device"]
+    params["gpu"] = device
     set_logger(params)
     logging.info("Params: " + print_to_json(params))
     seed_everything(seed=params["seed"])
