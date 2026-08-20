@@ -1,7 +1,7 @@
 # =========================================================================
 # Copyright (C) 2024. The FuxiCTR Library. All rights reserved.
 # Copyright (C) 2022. Huawei Technologies Co., Ltd. All rights reserved.
-# 
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -23,7 +23,12 @@ import os, sys
 import logging
 from fuxictr.pytorch.layers import FeatureEmbeddingDict
 from fuxictr.metrics import evaluate_metrics
-from fuxictr.pytorch.torch_utils import get_device, get_optimizer, get_loss, get_regularizer
+from fuxictr.pytorch.torch_utils import (
+    get_device,
+    get_optimizer,
+    get_loss,
+    get_regularizer,
+)
 from fuxictr.utils import Monitor, not_in_whitelist
 from tqdm import tqdm
 
@@ -49,26 +54,32 @@ class BaseModel(nn.Module):
         reduce_lr_on_plateau (bool): Whether to reduce learning rate on plateau. Default: ``True``.
         **kwargs: Additional keyword arguments.
     """
-    def __init__(self,
-                 feature_map,
-                 model_id="BaseModel",
-                 task="binary_classification",
-                 gpu=-1,
-                 monitor="AUC",
-                 save_best_only=True,
-                 monitor_mode="max",
-                 early_stop_patience=2,
-                 eval_steps=None,
-                 embedding_regularizer=None,
-                 net_regularizer=None,
-                 reduce_lr_on_plateau=True,
-                 **kwargs):
+
+    def __init__(
+        self,
+        feature_map,
+        model_id="BaseModel",
+        task="binary_classification",
+        gpu=-1,
+        device=None,
+        monitor="AUC",
+        save_best_only=True,
+        monitor_mode="max",
+        early_stop_patience=2,
+        eval_steps=None,
+        embedding_regularizer=None,
+        net_regularizer=None,
+        reduce_lr_on_plateau=True,
+        **kwargs
+    ):
         super(BaseModel, self).__init__()
-        self.device = get_device(gpu)
+        if device is None:
+            device = kwargs.get("device")
+        self.device = get_device(gpu=gpu, device=device)
         self._monitor = Monitor(kv=monitor)
         self._monitor_mode = monitor_mode
         self._early_stop_patience = early_stop_patience
-        self._eval_steps = eval_steps # None default, that is evaluating every epoch
+        self._eval_steps = eval_steps  # None default, that is evaluating every epoch
         self._save_best_only = save_best_only
         self._embedding_regularizer = embedding_regularizer
         self._net_regularizer = net_regularizer
@@ -78,7 +89,9 @@ class BaseModel(nn.Module):
         self.output_activation = self.get_output_activation(task)
         self.model_id = model_id
         self.model_dir = os.path.join(kwargs["model_root"], feature_map.dataset_id)
-        self.checkpoint = os.path.abspath(os.path.join(self.model_dir, self.model_id + ".model"))
+        self.checkpoint = os.path.abspath(
+            os.path.join(self.model_dir, self.model_id + ".model")
+        )
         self.validation_metrics = kwargs["metrics"]
 
     def compile(self, optimizer, loss, lr):
@@ -109,12 +122,16 @@ class BaseModel(nn.Module):
                         if param.requires_grad:
                             emb_params.add(".".join([m_name, p_name]))
                             for emb_p, emb_lambda in emb_reg:
-                                reg_term += (emb_lambda / emb_p) * torch.norm(param, emb_p) ** emb_p
+                                reg_term += (emb_lambda / emb_p) * torch.norm(
+                                    param, emb_p
+                                ) ** emb_p
             for name, param in self.named_parameters():
                 if param.requires_grad:
                     if name not in emb_params:
                         for net_p, net_lambda in net_reg:
-                            reg_term += (net_lambda / net_p) * torch.norm(param, net_p) ** net_p
+                            reg_term += (net_lambda / net_p) * torch.norm(
+                                param, net_p
+                            ) ** net_p
         return reg_term
 
     def add_loss(self, return_dict, y_true):
@@ -127,7 +144,7 @@ class BaseModel(nn.Module):
         Returns:
             torch.Tensor: Loss value.
         """
-        loss = self.loss_fn(return_dict["y_pred"], y_true, reduction='mean')
+        loss = self.loss_fn(return_dict["y_pred"], y_true, reduction="mean")
         return loss
 
     def compute_loss(self, return_dict, y_true):
@@ -145,6 +162,7 @@ class BaseModel(nn.Module):
 
     def reset_parameters(self):
         """Reset model parameters using default and custom initializers."""
+
         def default_reset_params(m):
             """Initialize nn.Linear/nn.Conv1d layers by default.
 
@@ -155,14 +173,16 @@ class BaseModel(nn.Module):
                 nn.init.xavier_normal_(m.weight)
                 if m.bias is not None:
                     m.bias.data.fill_(0)
+
         def custom_reset_params(m):
             """Initialize layers with customized init_weights().
 
             Args:
                 m (nn.Module): Module to initialize.
             """
-            if hasattr(m, 'init_weights'):
+            if hasattr(m, "init_weights"):
                 m.init_weights()
+
         self.apply(default_reset_params)
         self.apply(custom_reset_params)
 
@@ -233,8 +253,14 @@ class BaseModel(nn.Module):
             param_group["lr"] = reduced_lr
         return reduced_lr
 
-    def fit(self, data_generator, epochs=1, validation_data=None,
-            max_gradient_norm=10., **kwargs):
+    def fit(
+        self,
+        data_generator,
+        epochs=1,
+        validation_data=None,
+        max_gradient_norm=10.0,
+        **kwargs
+    ):
         """Train the model for a fixed number of epochs.
 
         Args:
@@ -264,7 +290,11 @@ class BaseModel(nn.Module):
             if self._stop_training:
                 break
             else:
-                logging.info("************ Epoch={} end ************".format(self._epoch_index + 1))
+                logging.info(
+                    "************ Epoch={} end ************".format(
+                        self._epoch_index + 1
+                    )
+                )
         logging.info("Training finished.")
         logging.info("Load best model: {}".format(self.checkpoint))
         self.load_weights(self.checkpoint)
@@ -277,29 +307,47 @@ class BaseModel(nn.Module):
             min_delta (float): Minimum change to qualify as an improvement.
         """
         monitor_value = self._monitor.get_value(logs)
-        if (self._monitor_mode == "min" and monitor_value > self._best_metric - min_delta) or \
-           (self._monitor_mode == "max" and monitor_value < self._best_metric + min_delta):
+        if (
+            self._monitor_mode == "min"
+            and monitor_value > self._best_metric - min_delta
+        ) or (
+            self._monitor_mode == "max"
+            and monitor_value < self._best_metric + min_delta
+        ):
             self._stopping_steps += 1
-            logging.info("Monitor({})={:.6f} STOP!".format(self._monitor_mode, monitor_value))
+            logging.info(
+                "Monitor({})={:.6f} STOP!".format(self._monitor_mode, monitor_value)
+            )
             if self._reduce_lr_on_plateau:
                 current_lr = self.lr_decay()
-                logging.info("Reduce learning rate on plateau: {:.6f}".format(current_lr))
+                logging.info(
+                    "Reduce learning rate on plateau: {:.6f}".format(current_lr)
+                )
         else:
             self._stopping_steps = 0
             self._best_metric = monitor_value
             if self._save_best_only:
-                logging.info("Save best model: monitor({})={:.6f}"\
-                             .format(self._monitor_mode, monitor_value))
+                logging.info(
+                    "Save best model: monitor({})={:.6f}".format(
+                        self._monitor_mode, monitor_value
+                    )
+                )
                 self.save_weights(self.checkpoint)
         if self._stopping_steps >= self._early_stop_patience:
             self._stop_training = True
-            logging.info("********* Epoch={} early stop *********".format(self._epoch_index + 1))
+            logging.info(
+                "********* Epoch={} early stop *********".format(self._epoch_index + 1)
+            )
         if not self._save_best_only:
             self.save_weights(self.checkpoint)
 
     def eval_step(self):
         """Run a single evaluation step on the validation set."""
-        logging.info('Evaluation @epoch {} - batch {}: '.format(self._epoch_index + 1, self._batch_index + 1))
+        logging.info(
+            "Evaluation @epoch {} - batch {}: ".format(
+                self._epoch_index + 1, self._batch_index + 1
+            )
+        )
         val_logs = self.evaluate(self.valid_gen, metrics=self._monitor.get_metrics())
         self.checkpoint_and_earlystop(val_logs)
         self.train()
@@ -367,7 +415,9 @@ class BaseModel(nn.Module):
             for batch_data in data_generator:
                 return_dict = self.forward(batch_data)
                 y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
-                y_true.extend(self.get_labels(batch_data).data.cpu().numpy().reshape(-1))
+                y_true.extend(
+                    self.get_labels(batch_data).data.cpu().numpy().reshape(-1)
+                )
                 if self.feature_map.group_id is not None:
                     group_id.extend(self.get_group_id(batch_data).numpy().reshape(-1))
             y_pred = np.array(y_pred, np.float64)
@@ -376,8 +426,13 @@ class BaseModel(nn.Module):
             if metrics is not None:
                 val_logs = self.evaluate_metrics(y_true, y_pred, metrics, group_id)
             else:
-                val_logs = self.evaluate_metrics(y_true, y_pred, self.validation_metrics, group_id)
-            logging.info('[Metrics] ' + ' - '.join('{}: {:.6f}'.format(k, v) for k, v in val_logs.items()))
+                val_logs = self.evaluate_metrics(
+                    y_true, y_pred, self.validation_metrics, group_id
+                )
+            logging.info(
+                "[Metrics] "
+                + " - ".join("{}: {:.6f}".format(k, v) for k, v in val_logs.items())
+            )
             return val_logs
 
     def predict(self, data_generator):
@@ -467,4 +522,3 @@ class BaseModel(nn.Module):
             if param.requires_grad:
                 total_params += param.numel()
         logging.info("Total number of parameters: {}.".format(total_params))
-

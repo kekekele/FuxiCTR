@@ -15,8 +15,6 @@
 # limitations under the License.
 # =========================================================================
 
-
-import sys
 import os
 import numpy as np
 import torch
@@ -24,19 +22,6 @@ from torch import nn
 import random
 from functools import partial
 import re
-
-
-def has_npu():
-    return hasattr(torch, "npu") and torch.npu.is_available()
-
-
-def set_device(device):
-    if not isinstance(device, torch.device):
-        device = torch.device(device)
-    if device.type == "npu":
-        torch.npu.set_device(device)
-    elif device.type == "cuda":
-        torch.cuda.set_device(device)
 
 
 def seed_everything(seed=1029):
@@ -51,59 +36,39 @@ def seed_everything(seed=1029):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
-    if has_npu():
+    if hasattr(torch, "npu") and torch.npu.is_available():
         torch.npu.manual_seed(seed)
-        torch.npu.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
+    if hasattr(torch, "backends") and hasattr(torch.backends, "cudnn"):
+        torch.backends.cudnn.deterministic = True
 
 
-def get_device(gpu=-1):
+def get_device(gpu=-1, device=None):
     """Get a PyTorch compute device.
 
     Args:
-        gpu (int or str): GPU index or explicit device string. Integer values
-            keep the existing CUDA semantics. Strings may be ``"cpu"``,
-            ``"cuda:0"``, ``"npu"``, or ``"npu:0"``.
+        gpu (int): Legacy GPU/NPU device index. Default: ``-1``.
+        device (str or torch.device, optional): Preferred device spec such as
+            ``"cpu"``, ``"cuda:0"``, or ``"npu:0"``.
 
     Returns:
         torch.device: The selected compute device.
     """
-    if isinstance(gpu, torch.device):
-        return gpu
-    if gpu is None:
-        return torch.device("cpu")
-    if isinstance(gpu, str):
-        device_name = gpu.strip().lower()
-        if device_name in ["", "cpu", "-1"]:
+    if isinstance(device, str) and device.strip():
+        device = device.strip().lower()
+        if device == "cpu":
             return torch.device("cpu")
-        if device_name == "npu":
-            local_rank = int(os.environ.get("LOCAL_RANK", 0))
-            device_name = "npu:{}".format(local_rank)
-        if device_name == "cuda":
-            local_rank = int(os.environ.get("LOCAL_RANK", 0))
-            device_name = "cuda:{}".format(local_rank)
-        if device_name.startswith("cuda"):
-            if not torch.cuda.is_available():
-                raise RuntimeError(
-                    "CUDA device was requested but CUDA is not available."
-                )
-            return torch.device(device_name)
-        if device_name.startswith("npu"):
-            if not has_npu():
-                raise RuntimeError(
-                    "Ascend NPU was requested but torch_npu is not installed or no NPU is available."
-                )
-            return torch.device(device_name)
-        try:
-            gpu = int(device_name)
-        except ValueError:
-            raise ValueError("Unsupported device spec: {}".format(gpu))
-    if gpu >= 0 and torch.cuda.is_available():
-        device = torch.device("cuda:" + str(gpu))
-    else:
-        device = torch.device("cpu")
-    return device
+        match = re.fullmatch(r"(cuda|npu)(?::(\d+))?", device)
+        if not match:
+            raise ValueError("device={} is not supported.".format(device))
+        _, index = match.groups()
+        gpu = int(index) if index is not None else 0
+
+    if gpu >= 0:
+        if torch.cuda.is_available():
+            return torch.device("cuda:" + str(gpu))
+        if hasattr(torch, "npu") and torch.npu.is_available():
+            return torch.device("npu:" + str(gpu))
+    return torch.device("cpu")
 
 
 def get_optimizer(optimizer, params, lr):

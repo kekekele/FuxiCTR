@@ -13,32 +13,51 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =========================================================================
-
-
 import os
-
-os.chdir(os.path.dirname(os.path.realpath(__file__)))
 import sys
 import logging
-import fuxictr_version
 from fuxictr import datasets
 from datetime import datetime
 from fuxictr.utils import load_config, set_logger, print_to_json, print_to_list
 from fuxictr.features import FeatureMap
 from fuxictr.pytorch.dataloaders import RankDataLoader
-from fuxictr.pytorch.torch_utils import get_device, seed_everything, set_device
+from fuxictr.pytorch.torch_utils import seed_everything
 from fuxictr.preprocess import FeatureProcessor, build_dataset
-import src
 import gc
 import argparse
-import os
 from pathlib import Path
+import re
 
-if __name__ == "__main__":
-    """Usage: python run_expid.py --config {config_dir} --expid {experiment_id} --device {device}"""
+if __package__:
+    from . import fuxictr_version
+    from . import src
+else:
+    import fuxictr_version
+    import src
+
+
+CURRENT_DIR = Path(__file__).resolve().parent
+DEFAULT_CONFIG_DIR = CURRENT_DIR / "config"
+
+
+def parse_device_to_gpu(device):
+    device = device.strip().lower()
+    if device == "cpu":
+        return -1
+    match = re.fullmatch(r"(?:cuda|npu)(?::(\d+))?", device)
+    if not match:
+        raise ValueError("device={} is not supported.".format(device))
+    index = match.group(1)
+    return int(index) if index is not None else 0
+
+
+def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config", type=str, default="./config/", help="The config directory."
+        "--config",
+        type=str,
+        default=str(DEFAULT_CONFIG_DIR),
+        help="The config directory.",
     )
     parser.add_argument(
         "--expid", type=str, default="DeepFM_test", help="The experiment id to run."
@@ -47,15 +66,20 @@ if __name__ == "__main__":
         "--device",
         type=str,
         default="cpu",
-        help="The device to use, e.g. cpu, cuda, cuda:0, npu, or npu:0",
+        help="The target device, e.g. cpu, cuda:0, npu:0.",
     )
-    args = vars(parser.parse_args())
-    device = get_device(args["device"])
-    set_device(device)
+    return vars(parser.parse_args())
+
+
+def main():
+    """Usage: python -m model_zoo.DCNv2.run_expid --config {config_dir} --expid {experiment_id} --device {device_name}"""
+    args = parse_args()
+    config_dir = os.path.abspath(args["config"])
 
     experiment_id = args["expid"]
-    params = load_config(args["config"], experiment_id)
-    params["gpu"] = device
+    params = load_config(config_dir, experiment_id)
+    params["device"] = args["device"]
+    params["gpu"] = parse_device_to_gpu(args["device"])
     set_logger(params)
     logging.info("Params: " + print_to_json(params))
     seed_everything(seed=params["seed"])
@@ -92,7 +116,7 @@ if __name__ == "__main__":
         test_gen = RankDataLoader(feature_map, stage="test", **params).make_iterator()
         test_result = model.evaluate(test_gen)
 
-    result_filename = Path(args["config"]).name.replace(".yaml", "") + ".csv"
+    result_filename = Path(config_dir).name.replace(".yaml", "") + ".csv"
     with open(result_filename, "a+") as fw:
         fw.write(
             " {},[command] python {},[exp_id] {},[dataset_id] {},[train] {},[val] {},[test] {}\n".format(
@@ -105,3 +129,7 @@ if __name__ == "__main__":
                 print_to_list(test_result),
             )
         )
+
+
+if __name__ == "__main__":
+    main()

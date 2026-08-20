@@ -21,7 +21,12 @@ import torch
 import os, sys
 import logging
 from fuxictr.pytorch.models import BaseModel
-from fuxictr.pytorch.torch_utils import get_device, get_optimizer, get_loss, get_regularizer
+from fuxictr.pytorch.torch_utils import (
+    get_device,
+    get_optimizer,
+    get_loss,
+    get_regularizer,
+)
 from tqdm import tqdm
 from collections import defaultdict
 
@@ -49,42 +54,53 @@ class MultiTaskModel(BaseModel):
         reduce_lr_on_plateau (bool): Whether to reduce LR on plateau. Default: ``True``.
         **kwargs: Additional keyword arguments.
     """
-    def __init__(self,
-                 feature_map,
-                 model_id="MultiTaskModel",
-                 task=["binary_classification"],
-                 num_tasks=1,
-                 loss_weight='EQ',
-                 gpu=-1,
-                 monitor="AUC",
-                 save_best_only=True,
-                 monitor_mode="max",
-                 early_stop_patience=2,
-                 eval_steps=None,
-                 embedding_regularizer=None,
-                 net_regularizer=None,
-                 reduce_lr_on_plateau=True,
-                 **kwargs):
-        super(MultiTaskModel, self).__init__(feature_map=feature_map,
-                                             model_id=model_id,
-                                             task="binary_classification",
-                                             gpu=gpu,
-                                             loss_weight=loss_weight,
-                                             monitor=monitor,
-                                             save_best_only=save_best_only,
-                                             monitor_mode=monitor_mode,
-                                             early_stop_patience=early_stop_patience,
-                                             eval_steps=eval_steps,
-                                             embedding_regularizer=embedding_regularizer,
-                                             net_regularizer=net_regularizer,
-                                             reduce_lr_on_plateau=reduce_lr_on_plateau,
-                                             **kwargs)
-        self.device = get_device(gpu)
+
+    def __init__(
+        self,
+        feature_map,
+        model_id="MultiTaskModel",
+        task=["binary_classification"],
+        num_tasks=1,
+        loss_weight="EQ",
+        gpu=-1,
+        device=None,
+        monitor="AUC",
+        save_best_only=True,
+        monitor_mode="max",
+        early_stop_patience=2,
+        eval_steps=None,
+        embedding_regularizer=None,
+        net_regularizer=None,
+        reduce_lr_on_plateau=True,
+        **kwargs
+    ):
+        super(MultiTaskModel, self).__init__(
+            feature_map=feature_map,
+            model_id=model_id,
+            task="binary_classification",
+            gpu=gpu,
+            device=device,
+            loss_weight=loss_weight,
+            monitor=monitor,
+            save_best_only=save_best_only,
+            monitor_mode=monitor_mode,
+            early_stop_patience=early_stop_patience,
+            eval_steps=eval_steps,
+            embedding_regularizer=embedding_regularizer,
+            net_regularizer=net_regularizer,
+            reduce_lr_on_plateau=reduce_lr_on_plateau,
+            **kwargs
+        )
+        self.device = get_device(gpu=gpu, device=device)
         self.num_tasks = num_tasks
         self.loss_weight = loss_weight
         if isinstance(task, list):
-            assert len(task) == num_tasks, "the number of tasks must equal the length of \"task\""
-            self.output_activation = nn.ModuleList([self.get_output_activation(str(t)) for t in task])
+            assert (
+                len(task) == num_tasks
+            ), 'the number of tasks must equal the length of "task"'
+            self.output_activation = nn.ModuleList(
+                [self.get_output_activation(str(t)) for t in task]
+            )
         else:
             self.output_activation = nn.ModuleList(
                 [self.get_output_activation(task) for _ in range(num_tasks)]
@@ -115,8 +131,10 @@ class MultiTaskModel(BaseModel):
             list: List of label tensors for each task.
         """
         labels = self.feature_map.labels
-        y = [inputs[labels[i]].to(self.device).float().view(-1, 1)
-             for i in range(len(labels))]
+        y = [
+            inputs[labels[i]].to(self.device).float().view(-1, 1)
+            for i in range(len(labels))
+        ]
         return y
 
     def regularization_loss(self):
@@ -136,11 +154,15 @@ class MultiTaskModel(BaseModel):
                             if type(module) == nn.Embedding:
                                 if self._embedding_regularizer:
                                     for emb_p, emb_lambda in emb_reg:
-                                        reg_loss += (emb_lambda / emb_p) * torch.norm(param, emb_p) ** emb_p
+                                        reg_loss += (emb_lambda / emb_p) * torch.norm(
+                                            param, emb_p
+                                        ) ** emb_p
                             else:
                                 if self._net_regularizer:
                                     for net_p, net_lambda in net_reg:
-                                        reg_loss += (net_lambda / net_p) * torch.norm(param, net_p) ** net_p
+                                        reg_loss += (net_lambda / net_p) * torch.norm(
+                                            param, net_p
+                                        ) ** net_p
         return reg_loss
 
     def add_loss(self, return_dict, y_true):
@@ -154,9 +176,13 @@ class MultiTaskModel(BaseModel):
             torch.Tensor: Combined task loss.
         """
         labels = self.feature_map.labels
-        loss = [self.loss_fn[i](return_dict["{}_pred".format(labels[i])], y_true[i], reduction='mean')
-                for i in range(len(labels))]
-        if self.loss_weight == 'EQ':
+        loss = [
+            self.loss_fn[i](
+                return_dict["{}_pred".format(labels[i])], y_true[i], reduction="mean"
+            )
+            for i in range(len(labels))
+        ]
+        if self.loss_weight == "EQ":
             # Default: All losses are weighted equally
             loss = torch.sum(torch.stack(loss))
         return loss
@@ -197,8 +223,14 @@ class MultiTaskModel(BaseModel):
                 batch_y_true = self.get_labels(batch_data)
                 for i in range(len(labels)):
                     y_pred_all[labels[i]].extend(
-                        return_dict["{}_pred".format(labels[i])].data.cpu().numpy().reshape(-1))
-                    y_true_all[labels[i]].extend(batch_y_true[i].data.cpu().numpy().reshape(-1))
+                        return_dict["{}_pred".format(labels[i])]
+                        .data.cpu()
+                        .numpy()
+                        .reshape(-1)
+                    )
+                    y_true_all[labels[i]].extend(
+                        batch_y_true[i].data.cpu().numpy().reshape(-1)
+                    )
                 if self.feature_map.group_id is not None:
                     group_id.extend(self.get_group_id(batch_data).numpy().reshape(-1))
             all_val_logs = {}
@@ -211,11 +243,15 @@ class MultiTaskModel(BaseModel):
                 if metrics is not None:
                     val_logs = self.evaluate_metrics(y_true, y_pred, metrics, group_id)
                 else:
-                    val_logs = self.evaluate_metrics(y_true, y_pred, self.validation_metrics, group_id)
-                logging.info('[Task: {}][Metrics] '.format(labels[i]) + ' - '.join(
-                    '{}: {:.6f}'.format(k, v) for k, v in val_logs.items()))
+                    val_logs = self.evaluate_metrics(
+                        y_true, y_pred, self.validation_metrics, group_id
+                    )
+                logging.info(
+                    "[Task: {}][Metrics] ".format(labels[i])
+                    + " - ".join("{}: {:.6f}".format(k, v) for k, v in val_logs.items())
+                )
                 for k, v in val_logs.items():
-                    all_val_logs['{}_{}'.format(labels[i], k)] = v
+                    all_val_logs["{}_{}".format(labels[i], k)] = v
                     mean_val_logs[k].append(v)
             for k, v in mean_val_logs.items():
                 mean_val_logs[k] = np.mean(v)
@@ -241,5 +277,9 @@ class MultiTaskModel(BaseModel):
                 return_dict = self.forward(batch_data)
                 for i in range(len(labels)):
                     y_pred_all[labels[i]].extend(
-                        return_dict["{}_pred".format(labels[i])].data.cpu().numpy().reshape(-1))
+                        return_dict["{}_pred".format(labels[i])]
+                        .data.cpu()
+                        .numpy()
+                        .reshape(-1)
+                    )
         return y_pred_all
