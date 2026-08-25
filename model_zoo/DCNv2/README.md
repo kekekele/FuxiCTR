@@ -45,6 +45,36 @@ PYTHONPATH=. python -m model_zoo.DCNv2.run_expid --config model_zoo/DCNv2/config
 1. 一份原始 CSV，每行代表一个用户。
 2. 一份 mapping CSV，用来描述每个 sparse key 的含义。
 
+如果你当前没有现成的 `mapping_csv`，而是只有一个 schema JSON，可以先用
+[model_zoo/DCNv2/generate_mapping_csv_from_schema_json.py](d:/code/FuxiCTR/model_zoo/DCNv2/generate_mapping_csv_from_schema_json.py)
+生成 mapping CSV。
+
+例如 schema JSON 如下：
+
+```json
+{
+	"value_size_list": [-1, 3],
+	"key_size": 253,
+	"key_parts": ["age", "gender"],
+	"time_size": 6
+}
+```
+
+转换规则如下：
+
+1. `key` 按 `0` 到 `key_size - 1` 顺序生成。
+2. `feature_name` 按 `key_parts` 顺序循环取值。
+3. `feature_type` 按 `value_size_list` 顺序循环取值。
+4. `value_size_list` 中如果值为 `-1`，则映射成 `numeric`；否则映射成 `categorical`。
+
+生成命令：
+
+```bash
+PYTHONPATH=. python model_zoo/DCNv2/generate_mapping_csv_from_schema_json.py \
+	--schema_json <SCHEMA_JSON> \
+	--output_csv <MAPPING_CSV>
+```
+
 原始 CSV 至少要包含这些列：
 
 ```text
