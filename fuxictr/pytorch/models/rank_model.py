@@ -21,8 +21,13 @@ import numpy as np
 import torch
 import os, sys
 import logging
+from pathlib import Path
 from fuxictr.pytorch.layers import FeatureEmbeddingDict
-from fuxictr.metrics import evaluate_metrics
+from fuxictr.metrics import (
+    evaluate_metrics,
+    build_topk_distribution_tables,
+    build_binary_topk_distribution_tables,
+)
 from fuxictr.pytorch.torch_utils import (
     get_device,
     get_optimizer,
@@ -86,6 +91,8 @@ class BaseModel(nn.Module):
         self._reduce_lr_on_plateau = reduce_lr_on_plateau
         self._verbose = kwargs["verbose"]
         self.feature_map = feature_map
+        self.task = task
+        self.num_classes = kwargs.get("num_classes", 1)
         self.output_activation = self.get_output_activation(task)
         self.model_id = model_id
         self.model_dir = os.path.join(kwargs["model_root"], feature_map.dataset_id)
@@ -93,6 +100,8 @@ class BaseModel(nn.Module):
             os.path.join(self.model_dir, self.model_id + ".model")
         )
         self.validation_metrics = kwargs["metrics"]
+        self.topk_metrics = kwargs.get("topk_metrics", [])
+        self.topk_output_dir = kwargs.get("topk_output_dir")
 
     def compile(self, optimizer, loss, lr):
         """Configure the optimizer and loss function.
@@ -144,7 +153,11 @@ class BaseModel(nn.Module):
         Returns:
             torch.Tensor: Loss value.
         """
-        loss = self.loss_fn(return_dict["y_pred"], y_true, reduction="mean")
+        if self.task == "multiclass_classification":
+            logits = return_dict.get("y_logits", return_dict["y_pred"])
+            loss = self.loss_fn(logits, y_true, reduction="mean")
+        else:
+            loss = self.loss_fn(return_dict["y_pred"], y_true, reduction="mean")
         return loss
 
     def compute_loss(self, return_dict, y_true):
@@ -221,6 +234,8 @@ class BaseModel(nn.Module):
         """
         labels = self.feature_map.labels
         y = inputs[labels[0]].to(self.device)
+        if self.task == "multiclass_classification":
+            return y.long().view(-1)
         return y.float().view(-1, 1)
 
     def get_group_id(self, inputs):
@@ -408,26 +423,48 @@ class BaseModel(nn.Module):
         self.eval()  # set to evaluation mode
         with torch.no_grad():
             y_pred = []
+            y_logits = []
             y_true = []
             group_id = []
             if self._verbose > 0:
                 data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
             for batch_data in data_generator:
                 return_dict = self.forward(batch_data)
-                y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
-                y_true.extend(
-                    self.get_labels(batch_data).data.cpu().numpy().reshape(-1)
-                )
+                y_pred.append(return_dict["y_pred"].data.cpu().numpy())
+                if self.task == "multiclass_classification":
+                    y_logits.append(return_dict["y_logits"].data.cpu().numpy())
+                y_true.append(self.get_labels(batch_data).data.cpu().numpy())
                 if self.feature_map.group_id is not None:
                     group_id.extend(self.get_group_id(batch_data).numpy().reshape(-1))
-            y_pred = np.array(y_pred, np.float64)
-            y_true = np.array(y_true, np.float64)
+            y_pred = np.concatenate(y_pred, axis=0).astype(np.float64)
+            y_true = np.concatenate(y_true, axis=0)
+            y_logits_array = None
+            if self.task != "multiclass_classification":
+                y_pred = y_pred.reshape(-1)
+                y_true = y_true.astype(np.float64).reshape(-1)
+                self.export_topk_tables(y_true.astype(np.int64), y_pred)
+            else:
+                y_true = y_true.astype(np.int64).reshape(-1)
+                y_logits_array = np.concatenate(y_logits, axis=0).astype(np.float64)
+                self.export_topk_tables(y_true, y_logits_array)
             group_id = np.array(group_id) if len(group_id) > 0 else None
             if metrics is not None:
-                val_logs = self.evaluate_metrics(y_true, y_pred, metrics, group_id)
+                val_logs = self.evaluate_metrics(
+                    y_true,
+                    y_pred,
+                    metrics,
+                    group_id,
+                    y_logits=y_logits_array,
+                    topk_list=self.topk_metrics,
+                )
             else:
                 val_logs = self.evaluate_metrics(
-                    y_true, y_pred, self.validation_metrics, group_id
+                    y_true,
+                    y_pred,
+                    self.validation_metrics,
+                    group_id,
+                    y_logits=y_logits_array,
+                    topk_list=self.topk_metrics,
                 )
             logging.info(
                 "[Metrics] "
@@ -451,11 +488,15 @@ class BaseModel(nn.Module):
                 data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
             for batch_data in data_generator:
                 return_dict = self.forward(batch_data)
-                y_pred.extend(return_dict["y_pred"].data.cpu().numpy().reshape(-1))
-            y_pred = np.array(y_pred, np.float64)
+                y_pred.append(return_dict["y_pred"].data.cpu().numpy())
+            y_pred = np.concatenate(y_pred, axis=0).astype(np.float64)
+            if self.task != "multiclass_classification":
+                y_pred = y_pred.reshape(-1)
             return y_pred
 
-    def evaluate_metrics(self, y_true, y_pred, metrics, group_id=None):
+    def evaluate_metrics(
+        self, y_true, y_pred, metrics, group_id=None, y_logits=None, topk_list=None
+    ):
         """Compute evaluation metrics.
 
         Args:
@@ -467,7 +508,29 @@ class BaseModel(nn.Module):
         Returns:
             dict: Mapping of metric names to computed values.
         """
-        return evaluate_metrics(y_true, y_pred, metrics, group_id)
+        return evaluate_metrics(
+            y_true,
+            y_pred,
+            metrics,
+            group_id,
+            y_logits=y_logits,
+            topk_list=topk_list,
+        )
+
+    def export_topk_tables(self, y_true, y_logits):
+        if not self.topk_metrics:
+            return
+
+        output_dir = self.topk_output_dir or os.path.join(self.model_dir, "topk_reports")
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        if self.task == "multiclass_classification":
+            table_dict = build_topk_distribution_tables(y_true, y_logits, self.topk_metrics)
+        else:
+            table_dict = build_binary_topk_distribution_tables(y_true, y_logits, self.topk_metrics)
+        for topk, table_df in table_dict.items():
+            output_path = os.path.join(output_dir, "top{}.csv".format(topk))
+            table_df.to_csv(output_path, index=False)
+            logging.info("Saved top-k distribution report: %s", output_path)
 
     def save_weights(self, checkpoint):
         """Save model weights to a checkpoint file.
@@ -501,6 +564,8 @@ class BaseModel(nn.Module):
         """
         if task == "binary_classification":
             return nn.Sigmoid()
+        elif task == "multiclass_classification":
+            return nn.Softmax(dim=-1)
         elif task == "regression":
             return nn.Identity()
         else:

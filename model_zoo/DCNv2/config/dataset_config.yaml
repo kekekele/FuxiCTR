@@ -19,3 +19,26 @@ nps_wide_csv:
          {name: ["rating_t0","rating_t1","rating_t2","rating_t3","rating_t4","rating_t5",
                  "REPLACE_WITH_SCHEMA_FEATURES"], active: True, dtype: float, type: numeric}]
     label_col: {name: label, dtype: float}
+
+nps_wide_multiclass_csv:
+    data_root: ../../data/
+    data_format: csv
+    train_data: ../../data/nps_wide_multiclass/train.csv
+    valid_data: ../../data/nps_wide_multiclass/test.csv
+    test_data: ../../data/nps_wide_multiclass/test.csv
+    min_categr_count: 1
+    feature_cols:
+        [{name: ["user_id",
+                 "cat_feat_00_t0","cat_feat_01_t0","cat_feat_02_t0","cat_feat_03_t0","cat_feat_04_t0","cat_feat_05_t0","cat_feat_06_t0","cat_feat_07_t0","cat_feat_08_t0","cat_feat_09_t0","cat_feat_10_t0","cat_feat_11_t0",
+                 "cat_feat_00_t1","cat_feat_01_t1","cat_feat_02_t1","cat_feat_03_t1","cat_feat_04_t1","cat_feat_05_t1","cat_feat_06_t1","cat_feat_07_t1","cat_feat_08_t1","cat_feat_09_t1","cat_feat_10_t1","cat_feat_11_t1",
+                 "cat_feat_00_t2","cat_feat_01_t2","cat_feat_02_t2","cat_feat_03_t2","cat_feat_04_t2","cat_feat_05_t2","cat_feat_06_t2","cat_feat_07_t2","cat_feat_08_t2","cat_feat_09_t2","cat_feat_10_t2","cat_feat_11_t2",
+                 "cat_feat_00_t3","cat_feat_01_t3","cat_feat_02_t3","cat_feat_03_t3","cat_feat_04_t3","cat_feat_05_t3","cat_feat_06_t3","cat_feat_07_t3","cat_feat_08_t3","cat_feat_09_t3","cat_feat_10_t3","cat_feat_11_t3",
+                 "cat_feat_00_t4","cat_feat_01_t4","cat_feat_02_t4","cat_feat_03_t4","cat_feat_04_t4","cat_feat_05_t4","cat_feat_06_t4","cat_feat_07_t4","cat_feat_08_t4","cat_feat_09_t4","cat_feat_10_t4","cat_feat_11_t4",
+                 "cat_feat_00_t5","cat_feat_01_t5","cat_feat_02_t5","cat_feat_03_t5","cat_feat_04_t5","cat_feat_05_t5","cat_feat_06_t5","cat_feat_07_t5","cat_feat_08_t5","cat_feat_09_t5","cat_feat_10_t5","cat_feat_11_t5"], active: True, dtype: str, type: categorical},
+         {name: ["rating_t0","num_feat_00_t0","num_feat_01_t0","num_feat_02_t0","num_feat_03_t0","num_feat_04_t0","num_feat_05_t0","num_feat_06_t0","num_feat_07_t0","num_feat_08_t0","num_feat_09_t0","num_feat_10_t0","num_feat_11_t0","num_feat_12_t0","num_feat_13_t0","num_feat_14_t0","num_feat_15_t0","num_feat_16_t0","num_feat_17_t0","num_feat_18_t0","num_feat_19_t0","num_feat_20_t0","num_feat_21_t0","num_feat_22_t0","num_feat_23_t0",
+                 "rating_t1","num_feat_00_t1","num_feat_01_t1","num_feat_02_t1","num_feat_03_t1","num_feat_04_t1","num_feat_05_t1","num_feat_06_t1","num_feat_07_t1","num_feat_08_t1","num_feat_09_t1","num_feat_10_t1","num_feat_11_t1","num_feat_12_t1","num_feat_13_t1","num_feat_14_t1","num_feat_15_t1","num_feat_16_t1","num_feat_17_t1","num_feat_18_t1","num_feat_19_t1","num_feat_20_t1","num_feat_21_t1","num_feat_22_t1","num_feat_23_t1",
+                 "rating_t2","num_feat_00_t2","num_feat_01_t2","num_feat_02_t2","num_feat_03_t2","num_feat_04_t2","num_feat_05_t2","num_feat_06_t2","num_feat_07_t2","num_feat_08_t2","num_feat_09_t2","num_feat_10_t2","num_feat_11_t2","num_feat_12_t2","num_feat_13_t2","num_feat_14_t2","num_feat_15_t2","num_feat_16_t2","num_feat_17_t2","num_feat_18_t2","num_feat_19_t2","num_feat_20_t2","num_feat_21_t2","num_feat_22_t2","num_feat_23_t2",
+                 "rating_t3","num_feat_00_t3","num_feat_01_t3","num_feat_02_t3","num_feat_03_t3","num_feat_04_t3","num_feat_05_t3","num_feat_06_t3","num_feat_07_t3","num_feat_08_t3","num_feat_09_t3","num_feat_10_t3","num_feat_11_t3","num_feat_12_t3","num_feat_13_t3","num_feat_14_t3","num_feat_15_t3","num_feat_16_t3","num_feat_17_t3","num_feat_18_t3","num_feat_19_t3","num_feat_20_t3","num_feat_21_t3","num_feat_22_t3","num_feat_23_t3",
+                 "rating_t4","num_feat_00_t4","num_feat_01_t4","num_feat_02_t4","num_feat_03_t4","num_feat_04_t4","num_feat_05_t4","num_feat_06_t4","num_feat_07_t4","num_feat_08_t4","num_feat_09_t4","num_feat_10_t4","num_feat_11_t4","num_feat_12_t4","num_feat_13_t4","num_feat_14_t4","num_feat_15_t4","num_feat_16_t4","num_feat_17_t4","num_feat_18_t4","num_feat_19_t4","num_feat_20_t4","num_feat_21_t4","num_feat_22_t4","num_feat_23_t4",
+                 "rating_t5","num_feat_00_t5","num_feat_01_t5","num_feat_02_t5","num_feat_03_t5","num_feat_04_t5","num_feat_05_t5","num_feat_06_t5","num_feat_07_t5","num_feat_08_t5","num_feat_09_t5","num_feat_10_t5","num_feat_11_t5","num_feat_12_t5","num_feat_13_t5","num_feat_14_t5","num_feat_15_t5","num_feat_16_t5","num_feat_17_t5","num_feat_18_t5","num_feat_19_t5","num_feat_20_t5","num_feat_21_t5","num_feat_22_t5","num_feat_23_t5"], active: True, dtype: float, type: numeric}]
+    label_col: {name: label, dtype: int}

@@ -48,6 +48,7 @@ class DCNv2(BaseModel):
                  feature_map,
                  model_id="DCNv2",
                  gpu=-1,
+                 num_classes=1,
                  model_structure="parallel",
                  use_low_rank_mixture=False,
                  low_rank=32,
@@ -63,6 +64,7 @@ class DCNv2(BaseModel):
                  embedding_regularizer=None,
                  net_regularizer=None,
                  **kwargs):
+        task = kwargs.get("task", "binary_classification")
         super(DCNv2, self).__init__(feature_map,
                                     model_id=model_id,
                                     gpu=gpu,
@@ -100,7 +102,8 @@ class DCNv2(BaseModel):
             final_dim = stacked_dnn_hidden_units[-1] + parallel_dnn_hidden_units[-1]
         if self.model_structure == "crossnet_only": # only CrossNet
             final_dim = input_dim
-        self.fc = nn.Linear(final_dim, 1)
+        output_dim = num_classes if task == "multiclass_classification" else 1
+        self.fc = nn.Linear(final_dim, output_dim)
         self.compile(kwargs["optimizer"], kwargs["loss"], learning_rate)
         self.reset_parameters()
         self.model_to_device()
@@ -126,8 +129,8 @@ class DCNv2(BaseModel):
             final_out = torch.cat([cross_out, dnn_out], dim=-1)
         elif self.model_structure == "stacked_parallel":
             final_out = torch.cat([self.stacked_dnn(cross_out), self.parallel_dnn(feature_emb)], dim=-1)
-        y_pred = self.fc(final_out)
-        y_pred = self.output_activation(y_pred)
-        return_dict = {"y_pred": y_pred}
+        logits = self.fc(final_out)
+        y_pred = self.output_activation(logits)
+        return_dict = {"y_pred": y_pred, "y_logits": logits}
         return return_dict
 

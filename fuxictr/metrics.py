@@ -23,7 +23,7 @@ import multiprocessing as mp
 from collections import OrderedDict
 
 
-def evaluate_metrics(y_true, y_pred, metrics, group_id=None):
+def evaluate_metrics(y_true, y_pred, metrics, group_id=None, y_logits=None, topk_list=None):
     """Evaluate a list of metrics on predictions.
 
     Supports ``logloss``, ``AUC``, ``gAUC``, ``avgAUC``, ``MRR``, and ``NDCG@k``.
@@ -43,17 +43,30 @@ def evaluate_metrics(y_true, y_pred, metrics, group_id=None):
         ValueError: If an unsupported metric is requested.
     """
     return_dict = OrderedDict()
+    is_multiclass = isinstance(y_pred, np.ndarray) and y_pred.ndim > 1
     group_metrics = []
     for metric in metrics:
         if metric in ['logloss', 'binary_crossentropy']:
             return_dict[metric] = log_loss(y_true, y_pred)
         elif metric == 'AUC':
-            return_dict[metric] = roc_auc_score(y_true, y_pred)
+            if is_multiclass:
+                return_dict[metric] = roc_auc_score(y_true, y_pred, multi_class='ovr')
+            else:
+                return_dict[metric] = roc_auc_score(y_true, y_pred)
+        elif metric == 'accuracy':
+            if is_multiclass:
+                return_dict[metric] = accuracy_score(y_true, np.argmax(y_pred, axis=-1))
+            else:
+                return_dict[metric] = accuracy_score(y_true, (y_pred >= 0.5).astype(int))
         elif metric in ["gAUC", "avgAUC", "MRR"] or metric.startswith("NDCG"):
+            if is_multiclass:
+                raise ValueError("metric={} is not supported for multiclass predictions.".format(metric))
             return_dict[metric] = 0
             group_metrics.append(metric)
         else:
             raise ValueError("metric={} not supported.".format(metric))
+    if is_multiclass and y_logits is not None and topk_list:
+        return_dict.update(compute_topk_label_distribution(y_true, y_logits, topk_list))
     if len(group_metrics) > 0:
         assert group_id is not None, "group_index is required."
         metric_funcs = []
@@ -76,6 +89,118 @@ def evaluate_metrics(y_true, y_pred, metrics, group_id=None):
         average_result = list(sum_results[:, 0] / sum_results[:, 1])
         return_dict.update(dict(zip(group_metrics, average_result)))
     return return_dict
+
+
+def compute_topk_label_distribution(y_true, y_logits, topk_list):
+    """Compute true-label ratios within top-k samples ranked by each class logit.
+
+    Args:
+        y_true (np.ndarray): Integer class labels of shape ``(n_samples,)``.
+        y_logits (np.ndarray): Logit matrix of shape ``(n_samples, num_classes)``.
+        topk_list (list): List of positive integer top-k cutoffs.
+
+    Returns:
+        OrderedDict: Flattened metrics keyed as
+            ``top{K}_by_logit_class{c}_label{label}_ratio``.
+    """
+    metrics = OrderedDict()
+    if y_logits.ndim != 2:
+        raise ValueError("y_logits must be a 2D array for multiclass top-k analysis.")
+
+    num_samples, num_classes = y_logits.shape
+    class_labels = np.unique(y_true.astype(np.int64))
+    valid_topk = []
+    for topk in topk_list:
+        topk = int(topk)
+        if topk <= 0:
+            raise ValueError("topk values must be positive integers, but got {}.".format(topk))
+        valid_topk.append(min(topk, num_samples))
+
+    for class_idx in range(num_classes):
+        ranked_index = np.argsort(y_logits[:, class_idx])[::-1]
+        for topk in valid_topk:
+            top_labels = y_true[ranked_index[:topk]]
+            for label in class_labels:
+                ratio = float(np.mean(top_labels == label))
+                metrics[
+                    "top{}_by_logit_class{}_label{}_ratio".format(
+                        topk, class_idx, int(label)
+                    )
+                ] = ratio
+    return metrics
+
+
+def build_topk_distribution_tables(y_true, y_logits, topk_list):
+    """Build per-topk tables for multiclass logit ranking analysis.
+
+    Each returned DataFrame represents one top-k cutoff. Rows are the ranking
+    class (which logit column is used for sorting), and columns contain label
+    ratios and counts within that top-k slice.
+    """
+    if y_logits.ndim != 2:
+        raise ValueError("y_logits must be a 2D array for multiclass top-k analysis.")
+
+    num_samples, num_classes = y_logits.shape
+    class_labels = [int(label) for label in np.unique(y_true.astype(np.int64))]
+    valid_topk = []
+    for topk in topk_list:
+        topk = int(topk)
+        if topk <= 0:
+            raise ValueError("topk values must be positive integers, but got {}.".format(topk))
+        valid_topk.append(min(topk, num_samples))
+
+    table_dict = OrderedDict()
+    for topk in valid_topk:
+        rows = []
+        for class_idx in range(num_classes):
+            ranked_index = np.argsort(y_logits[:, class_idx])[::-1]
+            top_labels = y_true[ranked_index[:topk]]
+            row = {
+                "rank_by_logit_class": class_idx,
+                "topk": topk,
+                "sample_count": int(len(top_labels)),
+            }
+            for label in class_labels:
+                count = int(np.sum(top_labels == label))
+                row["label_{}_count".format(label)] = count
+                row["label_{}_ratio".format(label)] = float(count / max(len(top_labels), 1))
+            rows.append(row)
+        table_dict[topk] = pd.DataFrame(rows)
+    return table_dict
+
+
+def build_binary_topk_distribution_tables(y_true, y_score, topk_list):
+    """Build per-topk tables for binary score ranking analysis.
+
+    Rows are generated for a single ranking score column, which keeps the CSV
+    shape aligned with multiclass outputs.
+    """
+    y_true = y_true.astype(np.int64).reshape(-1)
+    y_score = y_score.reshape(-1)
+    num_samples = len(y_true)
+    class_labels = [int(label) for label in np.unique(y_true)]
+    valid_topk = []
+    for topk in topk_list:
+        topk = int(topk)
+        if topk <= 0:
+            raise ValueError("topk values must be positive integers, but got {}.".format(topk))
+        valid_topk.append(min(topk, num_samples))
+
+    ranked_index = np.argsort(y_score)[::-1]
+    table_dict = OrderedDict()
+    for topk in valid_topk:
+        top_labels = y_true[ranked_index[:topk]]
+        row = {
+            "rank_by_logit_class": 1,
+            "topk": topk,
+            "sample_count": int(len(top_labels)),
+        }
+        for label in class_labels:
+            count = int(np.sum(top_labels == label))
+            row["label_{}_count".format(label)] = count
+            row["label_{}_ratio".format(label)] = float(count / max(len(top_labels), 1))
+        table_dict[topk] = pd.DataFrame([row])
+    return table_dict
 
 def evaluate_block(df, metric_funcs):
     """Evaluate a list of metric functions on a single group DataFrame.
