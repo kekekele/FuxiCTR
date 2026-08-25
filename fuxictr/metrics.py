@@ -1,7 +1,7 @@
 # =========================================================================
 # Copyright (C) 2024. The FuxiCTR Library. All rights reserved.
 # Copyright (C) 2022. Huawei Technologies Co., Ltd. All rights reserved.
-# 
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -23,7 +23,9 @@ import multiprocessing as mp
 from collections import OrderedDict
 
 
-def evaluate_metrics(y_true, y_pred, metrics, group_id=None, y_logits=None, topk_list=None):
+def evaluate_metrics(
+    y_true, y_pred, metrics, group_id=None, y_logits=None, topk_list=None
+):
     """Evaluate a list of metrics on predictions.
 
     Supports ``logloss``, ``AUC``, ``gAUC``, ``avgAUC``, ``MRR``, and ``NDCG@k``.
@@ -46,21 +48,27 @@ def evaluate_metrics(y_true, y_pred, metrics, group_id=None, y_logits=None, topk
     is_multiclass = isinstance(y_pred, np.ndarray) and y_pred.ndim > 1
     group_metrics = []
     for metric in metrics:
-        if metric in ['logloss', 'binary_crossentropy']:
+        if metric in ["logloss", "binary_crossentropy"]:
             return_dict[metric] = log_loss(y_true, y_pred)
-        elif metric == 'AUC':
+        elif metric == "AUC":
             if is_multiclass:
-                return_dict[metric] = roc_auc_score(y_true, y_pred, multi_class='ovr')
+                return_dict[metric] = roc_auc_score(y_true, y_pred, multi_class="ovr")
             else:
                 return_dict[metric] = roc_auc_score(y_true, y_pred)
-        elif metric == 'accuracy':
+        elif metric == "accuracy":
             if is_multiclass:
                 return_dict[metric] = accuracy_score(y_true, np.argmax(y_pred, axis=-1))
             else:
-                return_dict[metric] = accuracy_score(y_true, (y_pred >= 0.5).astype(int))
+                return_dict[metric] = accuracy_score(
+                    y_true, (y_pred >= 0.5).astype(int)
+                )
         elif metric in ["gAUC", "avgAUC", "MRR"] or metric.startswith("NDCG"):
             if is_multiclass:
-                raise ValueError("metric={} is not supported for multiclass predictions.".format(metric))
+                raise ValueError(
+                    "metric={} is not supported for multiclass predictions.".format(
+                        metric
+                    )
+                )
             return_dict[metric] = 0
             group_metrics.append(metric)
         else:
@@ -74,10 +82,10 @@ def evaluate_metrics(y_true, y_pred, metrics, group_id=None, y_logits=None, topk
             try:
                 metric_funcs.append(eval(metric))
             except:
-                raise NotImplementedError('metrics={} not implemented.'.format(metric))
-        score_df = pd.DataFrame({"group_index": group_id,
-                                 "y_true": y_true,
-                                 "y_pred": y_pred})
+                raise NotImplementedError("metrics={} not implemented.".format(metric))
+        score_df = pd.DataFrame(
+            {"group_index": group_id, "y_true": y_true, "y_pred": y_pred}
+        )
         results = []
         pool = mp.Pool(processes=mp.cpu_count() // 2)
         for idx, df in score_df.groupby("group_index"):
@@ -113,7 +121,9 @@ def compute_topk_label_distribution(y_true, y_logits, topk_list):
     for topk in topk_list:
         topk = int(topk)
         if topk <= 0:
-            raise ValueError("topk values must be positive integers, but got {}.".format(topk))
+            raise ValueError(
+                "topk values must be positive integers, but got {}.".format(topk)
+            )
         valid_topk.append(min(topk, num_samples))
 
     for class_idx in range(num_classes):
@@ -146,7 +156,9 @@ def build_topk_distribution_tables(y_true, y_logits, topk_list):
     for topk in topk_list:
         topk = int(topk)
         if topk <= 0:
-            raise ValueError("topk values must be positive integers, but got {}.".format(topk))
+            raise ValueError(
+                "topk values must be positive integers, but got {}.".format(topk)
+            )
         valid_topk.append(min(topk, num_samples))
 
     table_dict = OrderedDict()
@@ -163,7 +175,9 @@ def build_topk_distribution_tables(y_true, y_logits, topk_list):
             for label in class_labels:
                 count = int(np.sum(top_labels == label))
                 row["label_{}_count".format(label)] = count
-                row["label_{}_ratio".format(label)] = float(count / max(len(top_labels), 1))
+                row["label_{}_ratio".format(label)] = float(
+                    count / max(len(top_labels), 1)
+                )
             rows.append(row)
         table_dict[topk] = pd.DataFrame(rows)
     return table_dict
@@ -183,7 +197,9 @@ def build_binary_topk_distribution_tables(y_true, y_score, topk_list):
     for topk in topk_list:
         topk = int(topk)
         if topk <= 0:
-            raise ValueError("topk values must be positive integers, but got {}.".format(topk))
+            raise ValueError(
+                "topk values must be positive integers, but got {}.".format(topk)
+            )
         valid_topk.append(min(topk, num_samples))
 
     ranked_index = np.argsort(y_score)[::-1]
@@ -202,6 +218,7 @@ def build_binary_topk_distribution_tables(y_true, y_score, topk_list):
         table_dict[topk] = pd.DataFrame([row])
     return table_dict
 
+
 def evaluate_block(df, metric_funcs):
     """Evaluate a list of metric functions on a single group DataFrame.
 
@@ -217,9 +234,10 @@ def evaluate_block(df, metric_funcs):
         v = fn(df.y_true.values, df.y_pred.values)
         if type(v) == tuple:
             res_list.append(v)
-        else: # add group weight
+        else:  # add group weight
             res_list.append((v, 1))
     return res_list
+
 
 def avgAUC(y_true, y_pred):
     """Compute average AUC used in MIND news recommendation.
@@ -234,8 +252,9 @@ def avgAUC(y_true, y_pred):
     if np.sum(y_true) > 0 and np.sum(y_true) < len(y_true):
         auc = roc_auc_score(y_true, y_pred)
         return (auc, 1)
-    else: # in case all negatives or all positives for a group
+    else:  # in case all negatives or all positives for a group
         return (0, 0)
+
 
 def gAUC(y_true, y_pred):
     """Compute group AUC defined in the DIN paper.
@@ -251,8 +270,9 @@ def gAUC(y_true, y_pred):
         auc = roc_auc_score(y_true, y_pred)
         n_samples = len(y_true)
         return (auc * n_samples, n_samples)
-    else: # in case all negatives or all positives for a group
+    else:  # in case all negatives or all positives for a group
         return (0, 0)
+
 
 def MRR(y_true, y_pred):
     """Compute Mean Reciprocal Rank.
@@ -294,8 +314,8 @@ class NDCG(object):
             float: DCG score.
         """
         order = np.argsort(y_pred)[::-1]
-        y_true = np.take(y_true, order[:self.topk])
-        gains = 2 ** y_true - 1
+        y_true = np.take(y_true, order[: self.topk])
+        gains = 2**y_true - 1
         discounts = np.log2(np.arange(len(y_true)) + 2)
         return np.sum(gains / discounts)
 
@@ -312,5 +332,3 @@ class NDCG(object):
         idcg = self.dcg_score(y_true, y_true)
         dcg = self.dcg_score(y_true, y_pred)
         return dcg / (idcg + 1e-12)
-
-

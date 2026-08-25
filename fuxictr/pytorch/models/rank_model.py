@@ -521,12 +521,18 @@ class BaseModel(nn.Module):
         if not self.topk_metrics:
             return
 
-        output_dir = self.topk_output_dir or os.path.join(self.model_dir, "topk_reports")
+        output_dir = self.topk_output_dir or os.path.join(
+            self.model_dir, "topk_reports"
+        )
         Path(output_dir).mkdir(parents=True, exist_ok=True)
         if self.task == "multiclass_classification":
-            table_dict = build_topk_distribution_tables(y_true, y_logits, self.topk_metrics)
+            table_dict = build_topk_distribution_tables(
+                y_true, y_logits, self.topk_metrics
+            )
         else:
-            table_dict = build_binary_topk_distribution_tables(y_true, y_logits, self.topk_metrics)
+            table_dict = build_binary_topk_distribution_tables(
+                y_true, y_logits, self.topk_metrics
+            )
         for topk, table_df in table_dict.items():
             output_path = os.path.join(output_dir, "top{}.csv".format(topk))
             table_df.to_csv(output_path, index=False)
