@@ -86,7 +86,10 @@ class Tokenizer(object):
             word_counts (Counter): Token frequency counts.
         """
         # sort to guarantee the determinism of index order
-        word_counts = word_counts.most_common()
+        if hasattr(word_counts, "most_common"):
+            word_counts = word_counts.most_common()
+        else:
+            word_counts = sorted(word_counts.items(), key=lambda item: (-item[1], item[0]))
         if self._max_features: # keep the most frequent features
             word_counts = word_counts[0:self._max_features]
         words = []
