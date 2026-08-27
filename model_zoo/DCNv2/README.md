@@ -191,6 +191,7 @@ label_col: {name: label, dtype: int}
 7. `batch_size`、`learning_rate`、`embedding_dim`、`epochs`: 主要训练超参数。
 8. `topk_metrics`: 可选，例如 `[100, 500]`。
 9. `topk_output_dir`: 可选，用于输出 topK CSV 报表。
+10. `topk_analysis_cols`: 可选，例如 `['raw_rating']`，用于在 topK 排序结果中额外统计指定列的分布。
 
 多分类的最小配置模式如下：
 
@@ -257,6 +258,9 @@ PYTHONPATH=. python model_zoo/DCNv2/generate_mock_nps_wide_data_multiclass.py \
 	--num_classes 3
 ```
 
+这份 mock 数据除了训练用的 `label`，还会额外保留 `raw_rating` 列。
+其中 `label` 是由 `raw_rating` 按区间分组后得到的多分类标签，`raw_rating` 本身不会参与模型计算，默认仅用于 topK 分析导出。
+
 然后切分数据：
 
 ```bash
@@ -300,6 +304,7 @@ PYTHONPATH=. python -m model_zoo.DCNv2.run_expid --config model_zoo/DCNv2/config
 ```yaml
 topk_metrics: [100, 500]
 topk_output_dir: './topk_reports/'
+topk_analysis_cols: ['raw_rating']
 ```
 
 那么 DCNv2 会为每个 topK 导出一张 CSV，例如：
@@ -311,6 +316,15 @@ top500.csv
 
 二分类按预测分数排序。
 多分类按各类别的 logits 排序。
+
+如果配置了 `topk_analysis_cols`，还会额外输出对应分析列的 CSV，例如：
+
+```text
+top100_raw_rating.csv
+top500_raw_rating.csv
+```
+
+要让这类分析列进入 dataloader、但又不进入模型，建议在 `dataset_config.yaml` 中把它们保留在 `feature_cols`，并设置为 `type: meta`。
 
 ### 6. 训练后会产出的文件
 

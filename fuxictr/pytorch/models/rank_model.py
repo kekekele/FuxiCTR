@@ -102,6 +102,7 @@ class BaseModel(nn.Module):
         self.validation_metrics = kwargs["metrics"]
         self.topk_metrics = kwargs.get("topk_metrics", [])
         self.topk_output_dir = kwargs.get("topk_output_dir")
+        self.topk_analysis_cols = kwargs.get("topk_analysis_cols", [])
 
     def compile(self, optimizer, loss, lr):
         """Configure the optimizer and loss function.
@@ -426,6 +427,7 @@ class BaseModel(nn.Module):
             y_logits = []
             y_true = []
             group_id = []
+            topk_analysis_data = {col: [] for col in self.topk_analysis_cols}
             if self._verbose > 0:
                 data_generator = tqdm(data_generator, disable=False, file=sys.stdout)
             for batch_data in data_generator:
@@ -434,19 +436,36 @@ class BaseModel(nn.Module):
                 if self.task == "multiclass_classification":
                     y_logits.append(return_dict["y_logits"].data.cpu().numpy())
                 y_true.append(self.get_labels(batch_data).data.cpu().numpy())
+                for col in self.topk_analysis_cols:
+                    if col not in batch_data:
+                        raise ValueError(
+                            "topk_analysis_cols contains '{}', but this column is not available in the dataloader. "
+                            "Make sure it is kept in dataset_config feature_cols, preferably as type=meta if it should not enter the model.".format(
+                                col
+                            )
+                        )
+                    topk_analysis_data[col].append(batch_data[col].data.cpu().numpy())
                 if self.feature_map.group_id is not None:
                     group_id.extend(self.get_group_id(batch_data).numpy().reshape(-1))
             y_pred = np.concatenate(y_pred, axis=0).astype(np.float64)
             y_true = np.concatenate(y_true, axis=0)
+            topk_analysis_arrays = {
+                col: np.concatenate(values, axis=0)
+                for col, values in topk_analysis_data.items()
+            }
             y_logits_array = None
             if self.task != "multiclass_classification":
                 y_pred = y_pred.reshape(-1)
                 y_true = y_true.astype(np.float64).reshape(-1)
                 self.export_topk_tables(y_true.astype(np.int64), y_pred)
+                for col, values in topk_analysis_arrays.items():
+                    self.export_topk_tables(values, y_pred, target_name=col)
             else:
                 y_true = y_true.astype(np.int64).reshape(-1)
                 y_logits_array = np.concatenate(y_logits, axis=0).astype(np.float64)
                 self.export_topk_tables(y_true, y_logits_array)
+                for col, values in topk_analysis_arrays.items():
+                    self.export_topk_tables(values, y_logits_array, target_name=col)
             group_id = np.array(group_id) if len(group_id) > 0 else None
             if metrics is not None:
                 val_logs = self.evaluate_metrics(
@@ -517,7 +536,7 @@ class BaseModel(nn.Module):
             topk_list=topk_list,
         )
 
-    def export_topk_tables(self, y_true, y_logits):
+    def export_topk_tables(self, y_true, y_logits, target_name="label"):
         if not self.topk_metrics:
             return
 
@@ -534,7 +553,10 @@ class BaseModel(nn.Module):
                 y_true, y_logits, self.topk_metrics
             )
         for topk, table_df in table_dict.items():
-            output_path = os.path.join(output_dir, "top{}.csv".format(topk))
+            file_name = "top{}.csv".format(topk)
+            if target_name != "label":
+                file_name = "top{}_{}.csv".format(topk, target_name)
+            output_path = os.path.join(output_dir, file_name)
             table_df.to_csv(output_path, index=False)
             logging.info("Saved top-k distribution report: %s", output_path)
 

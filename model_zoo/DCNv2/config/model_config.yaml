@@ -105,6 +105,7 @@ DCNv2_nps_multiclass:
     metrics: ['accuracy', 'logloss', 'AUC']
     topk_metrics: [100, 500]
     topk_output_dir: './topk_reports/'
+    topk_analysis_cols: ['raw_rating']
     task: multiclass_classification
     num_classes: 3
     optimizer: adam

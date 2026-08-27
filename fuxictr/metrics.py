@@ -147,11 +147,12 @@ def build_topk_distribution_tables(y_true, y_logits, topk_list):
     class (which logit column is used for sorting), and columns contain label
     ratios and counts within that top-k slice.
     """
+    y_true = normalize_distribution_values(y_true)
     if y_logits.ndim != 2:
         raise ValueError("y_logits must be a 2D array for multiclass top-k analysis.")
 
     num_samples, num_classes = y_logits.shape
-    class_labels = [int(label) for label in np.unique(y_true.astype(np.int64))]
+    class_labels = [format_distribution_value(label) for label in pd.unique(y_true)]
     valid_topk = []
     for topk in topk_list:
         topk = int(topk)
@@ -189,10 +190,10 @@ def build_binary_topk_distribution_tables(y_true, y_score, topk_list):
     Rows are generated for a single ranking score column, which keeps the CSV
     shape aligned with multiclass outputs.
     """
-    y_true = y_true.astype(np.int64).reshape(-1)
+    y_true = normalize_distribution_values(y_true)
     y_score = y_score.reshape(-1)
     num_samples = len(y_true)
-    class_labels = [int(label) for label in np.unique(y_true)]
+    class_labels = [format_distribution_value(label) for label in pd.unique(y_true)]
     valid_topk = []
     for topk in topk_list:
         topk = int(topk)
@@ -217,6 +218,23 @@ def build_binary_topk_distribution_tables(y_true, y_score, topk_list):
             row["label_{}_ratio".format(label)] = float(count / max(len(top_labels), 1))
         table_dict[topk] = pd.DataFrame([row])
     return table_dict
+
+
+def normalize_distribution_values(values):
+    values = np.asarray(values).reshape(-1)
+    if np.issubdtype(values.dtype, np.floating):
+        rounded_values = np.rint(values)
+        if np.allclose(values, rounded_values, equal_nan=True):
+            values = rounded_values.astype(np.int64)
+    return values
+
+
+def format_distribution_value(value):
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return str(value)
 
 
 def evaluate_block(df, metric_funcs):

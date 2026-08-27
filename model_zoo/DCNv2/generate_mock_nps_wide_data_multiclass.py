@@ -12,7 +12,12 @@ def softmax(x):
     return exp_x / exp_x.sum()
 
 
-def build_schema(categorical_cols, numeric_cols):
+def rating_to_label(raw_rating, num_classes):
+    boundaries = np.linspace(1, 11, num_classes + 1)
+    return int(np.searchsorted(boundaries[1:-1], raw_rating, side="right"))
+
+
+def build_schema(categorical_cols, numeric_cols, meta_cols=None):
     feature_cols = []
     if categorical_cols:
         feature_cols.extend(
@@ -27,6 +32,10 @@ def build_schema(categorical_cols, numeric_cols):
                 {"name": name, "dtype": "float", "type": "numeric"}
                 for name in numeric_cols
             ]
+        )
+    if meta_cols:
+        feature_cols.extend(
+            [{"name": name, "dtype": "int", "type": "meta"} for name in meta_cols]
         )
     return {
         "label_col": {"name": "label", "dtype": "int"},
@@ -78,6 +87,7 @@ def main():
     rows = []
     categorical_cols = ["user_id"]
     numeric_cols = []
+    meta_cols = ["raw_rating"]
 
     numeric_base = [
         "num_feat_{:02d}".format(idx) for idx in range(args.num_numeric_keys)
@@ -130,7 +140,13 @@ def main():
                 class_scores += cat_weights[:, period_idx, feature_idx, category_id]
 
         probabilities = softmax(class_scores)
-        row["label"] = int(rng.choice(args.num_classes, p=probabilities))
+        expected_class = float(np.dot(probabilities, np.arange(args.num_classes)))
+        expected_rating = 1.0 + 9.0 * expected_class / max(args.num_classes - 1, 1)
+        raw_rating = int(
+            np.clip(np.rint(expected_rating + rng.normal(0.0, 1.0)), 1, 10)
+        )
+        row["raw_rating"] = raw_rating
+        row["label"] = rating_to_label(raw_rating, args.num_classes)
         rows.append(row)
 
     output_df = pd.DataFrame(rows)
@@ -139,11 +155,18 @@ def main():
     schema_json = os.path.join(args.output_dir, "schema.json")
     output_df.to_csv(wide_csv, index=False)
 
-    schema = build_schema(categorical_cols=categorical_cols, numeric_cols=numeric_cols)
+    schema = build_schema(
+        categorical_cols=categorical_cols,
+        numeric_cols=numeric_cols,
+        meta_cols=meta_cols,
+    )
     with open(schema_json, "w", encoding="utf-8") as output_file:
         json.dump(schema, output_file, ensure_ascii=True, indent=2)
 
     class_distribution = output_df["label"].value_counts(normalize=True).sort_index()
+    rating_distribution = (
+        output_df["raw_rating"].value_counts(normalize=True).sort_index()
+    )
 
     print("Saved mock wide CSV to {}".format(wide_csv))
     print("Saved schema JSON to {}".format(schema_json))
@@ -151,6 +174,9 @@ def main():
     print("Class distribution:")
     for class_id, ratio in class_distribution.items():
         print("  class {}: {:.4f}".format(int(class_id), float(ratio)))
+    print("Raw rating distribution:")
+    for rating_value, ratio in rating_distribution.items():
+        print("  rating {}: {:.4f}".format(int(rating_value), float(ratio)))
 
 
 if __name__ == "__main__":
