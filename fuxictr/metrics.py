@@ -46,13 +46,42 @@ def evaluate_metrics(
     """
     return_dict = OrderedDict()
     is_multiclass = isinstance(y_pred, np.ndarray) and y_pred.ndim > 1
+    multiclass_labels = None
+    observed_labels = None
+    if is_multiclass:
+        multiclass_labels = np.arange(y_pred.shape[1])
+        observed_labels = np.unique(y_true.astype(np.int64))
     group_metrics = []
     for metric in metrics:
         if metric in ["logloss", "binary_crossentropy"]:
-            return_dict[metric] = log_loss(y_true, y_pred)
+            if is_multiclass:
+                return_dict[metric] = log_loss(y_true, y_pred, labels=multiclass_labels)
+            else:
+                return_dict[metric] = log_loss(y_true, y_pred)
         elif metric == "AUC":
             if is_multiclass:
-                return_dict[metric] = roc_auc_score(y_true, y_pred, multi_class="ovr")
+                if len(observed_labels) < 2:
+                    raise ValueError(
+                        "AUC requires at least 2 classes in y_true, but got {}.".format(
+                            observed_labels.tolist()
+                        )
+                    )
+                auc_scores = y_pred[:, observed_labels]
+                auc_scores = auc_scores / np.clip(
+                    auc_scores.sum(axis=1, keepdims=True), 1e-12, None
+                )
+                if len(observed_labels) == 2:
+                    positive_label = observed_labels[-1]
+                    return_dict[metric] = roc_auc_score(
+                        (y_true == positive_label).astype(np.int64), auc_scores[:, -1]
+                    )
+                else:
+                    return_dict[metric] = roc_auc_score(
+                        y_true,
+                        auc_scores,
+                        multi_class="ovr",
+                        labels=observed_labels,
+                    )
             else:
                 return_dict[metric] = roc_auc_score(y_true, y_pred)
         elif metric == "accuracy":

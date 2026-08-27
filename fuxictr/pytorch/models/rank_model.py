@@ -93,6 +93,7 @@ class BaseModel(nn.Module):
         self.feature_map = feature_map
         self.task = task
         self.num_classes = kwargs.get("num_classes", 1)
+        self.label_offset = kwargs.get("label_offset", 0)
         self.output_activation = self.get_output_activation(task)
         self.model_id = model_id
         self.model_dir = os.path.join(kwargs["model_root"], feature_map.dataset_id)
@@ -236,7 +237,18 @@ class BaseModel(nn.Module):
         labels = self.feature_map.labels
         y = inputs[labels[0]].to(self.device)
         if self.task == "multiclass_classification":
-            return y.long().view(-1)
+            y = y.long().view(-1) - int(self.label_offset)
+            if torch.any(y < 0) or torch.any(y >= self.num_classes):
+                raise ValueError(
+                    "Multiclass labels are out of range after applying label_offset={}. "
+                    "Expected labels in [0, {}], but got min={}, max={}.".format(
+                        self.label_offset,
+                        self.num_classes - 1,
+                        int(torch.min(y).item()),
+                        int(torch.max(y).item()),
+                    )
+                )
+            return y
         return y.float().view(-1, 1)
 
     def get_group_id(self, inputs):
