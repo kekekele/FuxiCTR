@@ -181,7 +181,7 @@ def build_topk_distribution_tables(y_true, y_logits, topk_list):
         raise ValueError("y_logits must be a 2D array for multiclass top-k analysis.")
 
     num_samples, num_classes = y_logits.shape
-    class_labels = [format_distribution_value(label) for label in pd.unique(y_true)]
+    class_values = list(pd.unique(y_true))
     valid_topk = []
     for topk in topk_list:
         topk = int(topk)
@@ -202,10 +202,11 @@ def build_topk_distribution_tables(y_true, y_logits, topk_list):
                 "topk": topk,
                 "sample_count": int(len(top_labels)),
             }
-            for label in class_labels:
-                count = int(np.sum(top_labels == label))
-                row["label_{}_count".format(label)] = count
-                row["label_{}_ratio".format(label)] = float(
+            for label_value in class_values:
+                label_name = format_distribution_value(label_value)
+                count = int(np.sum(top_labels == label_value))
+                row["label_{}_count".format(label_name)] = count
+                row["label_{}_ratio".format(label_name)] = float(
                     count / max(len(top_labels), 1)
                 )
             rows.append(row)
@@ -222,7 +223,7 @@ def build_binary_topk_distribution_tables(y_true, y_score, topk_list):
     y_true = normalize_distribution_values(y_true)
     y_score = y_score.reshape(-1)
     num_samples = len(y_true)
-    class_labels = [format_distribution_value(label) for label in pd.unique(y_true)]
+    class_values = list(pd.unique(y_true))
     valid_topk = []
     for topk in topk_list:
         topk = int(topk)
@@ -241,10 +242,13 @@ def build_binary_topk_distribution_tables(y_true, y_score, topk_list):
             "topk": topk,
             "sample_count": int(len(top_labels)),
         }
-        for label in class_labels:
-            count = int(np.sum(top_labels == label))
-            row["label_{}_count".format(label)] = count
-            row["label_{}_ratio".format(label)] = float(count / max(len(top_labels), 1))
+        for label_value in class_values:
+            label_name = format_distribution_value(label_value)
+            count = int(np.sum(top_labels == label_value))
+            row["label_{}_count".format(label_name)] = count
+            row["label_{}_ratio".format(label_name)] = float(
+                count / max(len(top_labels), 1)
+            )
         table_dict[topk] = pd.DataFrame([row])
     return table_dict
 
